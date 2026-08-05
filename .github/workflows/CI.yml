@@ -108,8 +108,8 @@ jobs:
 
       - name: ⬇️-Clone-Source-Code
         run: |
-          git clone --depth=1 https://github.com/TW641/padavan-4.4.git /opt/rt-n56u
-          echo "PADAVAN_REPO=https://github.com/TW641/padavan-4.4" >> $GITHUB_ENV
+          git clone --depth=1 https://github.com/xsocialvn/padavan-4.4.git /opt/rt-n56u
+          echo "PADAVAN_REPO=https://github.com/xsocialvn/padavan-4.4" >> $GITHUB_ENV
 
       # =======================================================
       # [步驟 A] 統一準備資源 (只 Clone 一次！)
