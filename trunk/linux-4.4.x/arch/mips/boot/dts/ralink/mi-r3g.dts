@@ -1,0 +1,130 @@
+/dts-v1/;
+
+#include "mt7621.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+
+/ {
+	compatible = "xiaomi,mi-router-3g", "mediatek,mt7621-soc";
+	model = "Xiaomi Mi Router 3G v1";
+
+	aliases {
+		led-boot = &led_status_amber;
+		led-failsafe = &led_status_red;
+		led-running = &led_status_blue;
+		led-upgrade = &led_status_amber;
+	};
+
+	chosen {
+		bootargs = "console=ttyS0,115200";
+	};
+
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x10000000>; /* 256MB DDR3 RAM */
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led_status_blue: status_blue {
+			label = "mir3g:blue:status";
+			gpios = <&gpio0 9 GPIO_ACTIVE_LOW>;
+		};
+
+		led_status_red: status_red {
+			label = "mir3g:red:status";
+			gpios = <&gpio0 10 GPIO_ACTIVE_LOW>;
+		};
+
+		led_status_amber: status_amber {
+			label = "mir3g:amber:status";
+			gpios = <&gpio0 11 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	keys {
+		compatible = "gpio-keys-polled";
+		poll-interval = <20>;
+
+		reset {
+			label = "reset";
+			gpios = <&gpio0 18 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+	};
+
+	usb_vbus: regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "usb_vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpio = <&gpio0 12 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+};
+
+&nand {
+	status = "okay";
+
+	partition@0 {
+		label = "Bootloader";
+		reg = <0x0 0x80000>;
+		read-only;
+	};
+
+	partition@80000 {
+		label = "NVRAM";
+		reg = <0x80000 0x40000>;
+	};
+
+	partition@c0000 {
+		label = "BcnInitCode";
+		reg = <0xc0000 0x40000>;
+		read-only;
+	};
+
+	factory: partition@100000 {
+		label = "Factory";
+		reg = <0x100000 0x80000>;
+		read-only;
+	};
+
+	partition@180000 {
+		label = "firmware";
+		reg = <0x180000 0x2000000>;
+	};
+
+	partition@2180000 {
+		label = "kernel2";
+		reg = <0x2180000 0x2000000>;
+	};
+
+	partition@4180000 {
+		label = "rootfs2";
+		reg = <0x4180000 0x3e00000>;
+	};
+};
+
+&eth0 {
+	status = "okay";
+};
+
+&xhci {
+	status = "okay";
+	vbus-supply = <&usb_vbus>;
+};
+
+&pinctrl {
+	state_default: pinctrl0 {
+		gpio {
+			ralink,group = "i2c", "uart2", "uart3", "rgmii2";
+			ralink,function = "gpio";
+		};
+	};
+};
+
+&pcie {
+	status = "okay";
+};
