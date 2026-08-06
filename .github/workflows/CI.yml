@@ -8,10 +8,10 @@ on:
         required: true
         type: choice
         options:
-          - MI-R3G
           - K2P
           - K2P-NANO
           - K2P-USB
+          - MI-R3G
           - NEWIFI3
           - RM2100
           # 新增支援清單 (基於 trunk/configs/boards)
