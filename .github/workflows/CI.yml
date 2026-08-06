@@ -1732,13 +1732,8 @@ jobs:
           cd "$PACK_DIR"
           md5sum * > md5sum.txt 2>/dev/null || true
           
-          # 5. 打包 Zip
-          cd "/opt/images"
-          ZIP_NAME="Padavan-${{ env.REAL_MODEL }}-${{ env.BUILD_TIME }}.zip"
-          zip -j -r "$ZIP_NAME" "$PACK_DIR"
-          
-          # 設定環境變數供 Upload 與 Release 使用
-          echo "FINAL_ZIP_PATH=/opt/images/$ZIP_NAME" >> $GITHUB_ENV
+          # 5. 設定韌體 TRX 路徑供 Upload 與 Release 使用
+          echo "FINAL_ZIP_PATH=${{ env.FINAL_TRX_PATH }}" >> $GITHUB_ENV
           echo "::endgroup::"
 
       - name: 📦-Upload-Artifacts
@@ -1788,6 +1783,6 @@ jobs:
             * 韌體檔案 (.trx)
             * 系統配置 (build.config, kernel.config)
             * Debug 資訊 (defaults.h, iptables patch check)
-          artifacts: ${{ env.FINAL_ZIP_PATH }}
+          artifacts: ${{ env.FINAL_TRX_PATH }}
           allowUpdates: true
           artifactErrorsFailBuild: true
