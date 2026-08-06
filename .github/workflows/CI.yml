@@ -26,7 +26,7 @@ on:
           - MR2600
           - NETGEAR-BZV
           - XY-C1
-        default: K2P
+        default: MI-R3G
 
       language_select:
         description: "WebUI 語言設定 (Custom Language Selector)"
@@ -73,6 +73,9 @@ on:
           - tsl0922/uclibc (gcc 13.2.0, uClibc-ng 1.0.43)
           - hanwckf/uclibc-v1.1 (gcc 7.4.0, uclibc 1.0.32, SO_REUSEPORT patch)
         default: Padavan-NG (GCC 13+, uClibc-ng, ZSTD)
+
+permissions:
+  contents: write
 
 jobs:
   build:
