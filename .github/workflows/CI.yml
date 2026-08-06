@@ -8,10 +8,10 @@ on:
         required: true
         type: choice
         options:
+          - MI-R3G
           - K2P
           - K2P-NANO
           - K2P-USB
-          - MI-R3G
           - NEWIFI3
           - RM2100
           # 新增支援清單 (基於 trunk/configs/boards)
@@ -26,7 +26,7 @@ on:
           - MR2600
           - NETGEAR-BZV
           - XY-C1
-        default: K2P
+        default: MI-R3G
 
       language_select:
         description: "WebUI 語言設定 (Custom Language Selector)"
@@ -58,7 +58,7 @@ on:
         description: '自訂預設配置 JSON (Custom Default Configuration Wi-Fi/Passwords/IP)'
         required: true
         type: string
-        default: '{"lanip":"192.168.0.1","signaccount":"admin","signpassword":"admin","wifi2gssid":"Padavan","wifi2gpsk":"1234567890","wifi5gssid":"Padavan-5G","wifi5gpsk":"1234567890"}'
+        default: '{"lanip":"192.168.31.1","signaccount":"admin","signpassword":"admin","wifi2gssid":"Padavan","wifi2gpsk":"1234567890","wifi5gssid":"Padavan-5G","wifi5gpsk":"1234567890"}'
       
       toolchain_select:
         description: "選擇編譯工具鏈 (Select toolchain)"
