@@ -1603,68 +1603,154 @@ jobs:
           fi
           echo "::endgroup::"
             
-    - name: 🏗️-Build-Firmware
+      - name: 🏗️-Build-Firmware
         run: |
           cd /opt/rt-n56u/trunk
           sudo ./clear_tree
+          # 修改重點：
+          # 1. 2>&1 : 把錯誤訊息 (stderr) 也導向到標準輸出，這樣報錯也會被記錄。
+          # 2. | tee build.log : 像 T 型水管一樣，一邊流向螢幕(給你看)，一邊流向檔案(存檔)。
           sudo ./build_firmware_modify "${{ env.REAL_MODEL }}" 0 2>&1 | tee build.log
+          
+          # 檢查一下是否真的產生了 (除錯用)
           ls -lh build.log
+          
           FINAL_FILENAME="${{ env.REAL_MODEL }}-${{ env.TOOLCHAIN_TAG_FOR_NAME }}-${{ env.BUILD_TIME }}.trx"
-          FOUND_FILE=$(find images -maxdepth 2 -name "*.trx" | head -n 1)
+          FOUND_FILE=$(find images -name "*.trx" | head -n 1)
           if [ -z "$FOUND_FILE" ]; then echo "::error::未產出 TRX 檔案"; exit 1; fi
           sudo mv -f "$FOUND_FILE" "/opt/images/$FINAL_FILENAME"
           echo "FINAL_FILENAME=$FINAL_FILENAME" >> $GITHUB_ENV
-          echo "FINAL_TRX_PATH=/opt/images/$FINAL_FILENAME" >> $GITHUB_ENV
 
+      # =======================================================
+      # [修改] 智慧打包 (Debug追蹤 + 產物收集)
+      # =======================================================
       - name: 📦-Smart-Pack-Artifacts-Debug
         run: |
           echo "::group::Smart Packing & Debug Collection"
+          
+          # 定義路徑 (適配 /opt/rt-n56u)
           WORK_DIR="/opt/rt-n56u"
           PACK_DIR="/opt/images/output_pack"
+          IMAGES_DIR="/opt/images"
+          
           mkdir -p "$PACK_DIR"
+          
+          # 1. 收集關鍵配置與日誌
           echo "Collecting Configs and Logs..."
           [ -f "$WORK_DIR/trunk/.config" ] && cp "$WORK_DIR/trunk/.config" "$PACK_DIR/build.config"
           [ -f "$WORK_DIR/trunk/configs/boards/busybox.config" ] && cp "$WORK_DIR/trunk/configs/boards/busybox.config" "$PACK_DIR/busybox.config"
           [ -f "$WORK_DIR/trunk/user/shared/defaults.h" ] && cp "$WORK_DIR/trunk/user/shared/defaults.h" "$PACK_DIR/defaults.h.txt"
           [ -f "$WORK_DIR/trunk/linux-4.4.x/.config" ] && cp "$WORK_DIR/trunk/linux-4.4.x/.config" "$PACK_DIR/kernel.config"
-          [ -f "$WORK_DIR/trunk/build.log" ] && cp "$WORK_DIR/trunk/build.log" "$PACK_DIR/build.log"
+          # 這裡路徑要對應上面產生的位置
+          # 因為上面是在 trunk 資料夾下產生的 build.log
+          if [ -f "$WORK_DIR/trunk/build.log" ]; then
+              echo "✅ Found build.log, copying..."
+              cp "$WORK_DIR/trunk/build.log" "$PACK_DIR/build.log"
+          else
+              echo "⚠️ Warning: build.log not found in trunk/"
+          fi
+
+          # =======================================================
+          # 🔥 [NEW] 收集 BusyBox Patches (CVE Debug)
+          # =======================================================
           BB_SRC_DIR="$WORK_DIR/trunk/user/busybox/busybox-1.37.0"
           DEBUG_BB_DIR="$PACK_DIR/debug_busybox"
           mkdir -p "$DEBUG_BB_DIR"
+
+          # 檢查 Phase 7 建立的 patches 目錄是否存在
           if [ -d "$BB_SRC_DIR/patches" ]; then
+              echo "✅ Found BusyBox patches directory, collecting..."
               cp "$BB_SRC_DIR/patches"/*.patch "$DEBUG_BB_DIR/" 2>/dev/null || true
-              [ -f "$BB_SRC_DIR/.config" ] && cp "$BB_SRC_DIR/.config" "$DEBUG_BB_DIR/busybox_actual_build.config"
+              echo "- 🛡️ **BusyBox Patches**: Collected in \`debug_busybox\`"
+              
+              # 額外收集: BusyBox 的實際編譯 .config (確認 CVE 編譯選項)
+              if [ -f "$BB_SRC_DIR/.config" ]; then
+                  cp "$BB_SRC_DIR/.config" "$DEBUG_BB_DIR/busybox_actual_build.config"
+              fi
+          else
+              echo "⚠️ Warning: BusyBox patches directory not found (Phase 7 issue?)."
+              echo "- ⚠️ **BusyBox Patches**: Not found"
           fi
+          
+          # =======================================================
+          # 🔥 2. 強化：收集 iptables 相關產物 (智慧驗證版)
+          # =======================================================
+          # 定義 Padavan 4.4 的 iptables 路徑
           IPT_SRC_DIR="$WORK_DIR/trunk/user/iptables/iptables-1.8.7"
           PATCH_ARCHIVE_DIR="$IPT_SRC_DIR/patches_archive"
           DEBUG_DIR="$PACK_DIR/debug_iptables"
+          
           mkdir -p "$DEBUG_DIR"
-          [ -d "$PATCH_ARCHIVE_DIR" ] && cp "$PATCH_ARCHIVE_DIR"/*.patch "$DEBUG_DIR/"
-          [ -f "$IPT_SRC_DIR/patch_summary.log" ] && cp "$IPT_SRC_DIR/patch_summary.log" "$DEBUG_DIR/patch_summary.log"
-          TARGET_FILE="$IPT_SRC_DIR/libxtables/xtables.c"
-          if [ -f "$TARGET_FILE" ]; then
-              if grep -q "#if 0" "$TARGET_FILE" && grep -q "Warning: Extension %s is not supported" "$TARGET_FILE"; then
-                  cp "$TARGET_FILE" "$DEBUG_DIR/xtables_patched.c"
-              else
-                  cp "$TARGET_FILE" "$DEBUG_DIR/xtables_original.c"
-              fi
+          
+          # 2.1 收集 Patch 檔案
+          if [ -d "$PATCH_ARCHIVE_DIR" ]; then
+              cp "$PATCH_ARCHIVE_DIR"/*.patch "$DEBUG_DIR/"
+              echo "✅ All patches collected in debug_iptables"
+          else
+              echo "⚠️ Warning: Patches archive directory not found!"
           fi
-          [ -f "$IPT_SRC_DIR/config.log" ] && cp "$IPT_SRC_DIR/config.log" "$DEBUG_DIR/config.log"
-          cd /opt/images
-          md5sum "$FINAL_FILENAME" > "${FINAL_FILENAME}.md5"
+          
+          # 2.2 收集 Patch 過程日誌
+          if [ -f "$IPT_SRC_DIR/patch_summary.log" ]; then
+              cp "$IPT_SRC_DIR/patch_summary.log" "$DEBUG_DIR/patch_summary.log"
+              echo "✅ patch_summary.log collected"
+          fi
+
+          # 2.3 智慧複製 xtables.c (根據內容決定檔名)
+          TARGET_FILE="$IPT_SRC_DIR/libxtables/xtables.c"
+          
+          if [ -f "$TARGET_FILE" ]; then
+              # 檢查是否含有我們 Patch #100 的特徵碼 (屏蔽警告的 if 0)
+              if grep -q "#if 0" "$TARGET_FILE" && grep -q "Warning: Extension %s is not supported" "$TARGET_FILE"; then
+                  # 判定為已 Patch
+                  cp "$TARGET_FILE" "$DEBUG_DIR/xtables_patched.c"
+                  echo "✅ Detected PATCHED xtables.c - Saving as xtables_patched.c"
+              else
+                  # 判定為未 Patch (原版或 Patch 失敗)
+                  cp "$TARGET_FILE" "$DEBUG_DIR/xtables_original.c"
+                  echo "ℹ️ Detected UNPATCHED xtables.c - Saving as xtables_original.c"
+              fi
+          else
+               echo "⚠️ Warning: xtables.c not found (Maybe build failed or path differs)"
+          fi
+          
+          # 2.4 額外收集 config.log
+          if [ -f "$IPT_SRC_DIR/config.log" ]; then
+              cp "$IPT_SRC_DIR/config.log" "$DEBUG_DIR/config.log"
+              echo "✅ config.log collected"
+          fi
+          # =======================================================
+
+          # 3. 移動韌體檔案到打包目錄
+          if [ -f "$IMAGES_DIR/${{ env.FINAL_FILENAME }}" ]; then
+             cp "$IMAGES_DIR/${{ env.FINAL_FILENAME }}" "$PACK_DIR/"
+          else
+             echo "::warning:: Firmware file not found in images dir!"
+          fi
+
+          # 4. 產生 MD5
+          cd "$PACK_DIR"
+          md5sum * > md5sum.txt 2>/dev/null || true
+          
+          # 5. 打包 Zip
+          cd "/opt/images"
+          ZIP_NAME="Padavan-${{ env.REAL_MODEL }}-${{ env.BUILD_TIME }}.zip"
+          zip -j -r "$ZIP_NAME" "$PACK_DIR"
+          
+          # 設定環境變數供 Upload 與 Release 使用
+          echo "FINAL_ZIP_PATH=/opt/images/$ZIP_NAME" >> $GITHUB_ENV
           echo "::endgroup::"
 
       - name: 📦-Upload-Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@master
         with:
-          name: ${{ inputs.target_select }}-${{ env.BUILD_TIME }}-trx
-          path: |
-            ${{ env.FINAL_TRX_PATH }}
-            ${{ env.FINAL_TRX_PATH }}.md5
+          name: ${{ inputs.target_select }}-${{ env.BUILD_TIME }}
+          path: ${{ env.FINAL_ZIP_PATH }}
 
       - name: 🏷️-Set-Release-Tag
         if: github.event_name == 'workflow_dispatch'
-        run: echo "TAG_NAME=build-${{ inputs.target_select }}-${{ env.BUILD_TIME }}" >> $GITHUB_ENV
+        run: |
+          echo "TAG_NAME=build-${{ inputs.target_select }}-${{ env.BUILD_TIME }}" >> $GITHUB_ENV
 
       - name: 🚀-Publish-Release
         if: github.event_name == 'workflow_dispatch'
@@ -1676,20 +1762,32 @@ jobs:
           name: Build ${{ inputs.target_select }} (${{ env.BUILD_TIME }})
           body: |
             **Padavan 編譯報告 - Custom-Router-Build-Final-Fix**
-            * **Linux Kernel**: **4.4.198**
+            * **🇹🇼 TW641 Padavan CAKE🍰OpenWrt 25.12 Dave's Guitar🎸開源路由器韌體 與 Dave Täht數位典藏博物館🏛️**: https://TW641.github.io/
+            * **Linux Kernel**: **4.4.198**，大幅領先原廠舊核心。
+            * **專案版本**: Padavan ng CAKE Linux 4.4 (The Dave Täht Tribute Edition) - TW641 的開源專案 | TW641 Padavan CAKE 與 Dave Täht 數位典藏博物館
+            * **專案介紹**: https://TW641.github.io/padavan-4.4/
+            * **🕊️ In Memory of Dave Täht**
+            * **📢 SLOGAN: "The darker the night, the brighter the Täht."**
+            * **📢 Reminder: "When you miss Dave, modprobe sch_cake!"**
+            * **效能解放**：全系列整合 CAKE 流量調度、HWNAT (硬體加速) + SFE (軟體加速)。
+            * **介面優化**：內建繁體中文，並針對 1080P 寬螢幕進行排版優化。
+            * **穩定提升**：4.4 版本採用最穩定的 iproute2-5.12.0 TC + iproute2-5.12.0 IP + Iptables 1.8.7 + 套用 Upstream Patches 與 libmnl 1.0.5 組合，新增 Arptables v0.0.5。
+            * **安全防護**：全面升級 Busybox 1.37.0，修復多個 CVE 高風險漏洞（[SECURITY] CVE-2025-60876 & CVE-2025-46394）。
+            * **padavan-4.4 CI YAML自動化雲端編譯韌體腳本來源**: https://github.com/TW641/padavan-4.4/blob/main/.github/workflows/CI.yml
+            * **padavan-4.4 CI YAML自動化雲端編譯韌體腳本介紹**: https://TW641.github.io/padavan-4.4/
             * **原始碼來源 Repo**: ${{ env.PADAVAN_REPO }}
             * **選擇機型**: ${{ inputs.target_select }}
-            * **WebUI 語言選項**: ${{ env.RELEASE_LANG }}
+            * **WebUI 語言選項 (Custom Language Select)**: ${{ env.RELEASE_LANG }}
             * **編譯時間**: ${{ env.BUILD_TIME }} (Taipei Time)
             * **LAN IP**: ${{ env.LANIP }}
             * **工具鏈**: ${{ inputs.toolchain_select }}
             * **User**: ${{ env.SIGNACCOUNT }} / **Pass**: ${{ env.SIGNPASSWORD }}
             * **WiFi**: ${{ env.WIFI2GSSID }} / ${{ env.WIFI5GSSID }}
             
-            ### 韌體檔案
-            * Direct TRX Firmware: `${{ env.FINAL_FILENAME }}`
-          artifacts: |
-            ${{ env.FINAL_TRX_PATH }}
-            ${{ env.FINAL_TRX_PATH }}.md5
+            ### 包含內容
+            * 韌體檔案 (.trx)
+            * 系統配置 (build.config, kernel.config)
+            * Debug 資訊 (defaults.h, iptables patch check)
+          artifacts: ${{ env.FINAL_ZIP_PATH }}
           allowUpdates: true
           artifactErrorsFailBuild: true
